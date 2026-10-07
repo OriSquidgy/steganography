@@ -23,29 +23,87 @@ function previewEncodeImage() {
 }
 
 function previewImage(file, canvasSelector, callback) {
-  var reader = new FileReader();
-  var image = new Image;
   var $canvas = $(canvasSelector);
   var context = $canvas[0].getContext('2d');
 
-  if (file) {
-    reader.readAsDataURL(file);
-  }
+  if (!file) return;
 
-  reader.onloadend = function () {
-    image.src = URL.createObjectURL(file);
+  file.arrayBuffer().then(function(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var imageBlob;
+
+    // Normal PNG: use directly
+    var isPNG =
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4E &&
+      bytes[3] === 0x47 &&
+      bytes[4] === 0x0D &&
+      bytes[5] === 0x0A &&
+      bytes[6] === 0x1A &&
+      bytes[7] === 0x0A;
+
+    if (isPNG) {
+      imageBlob = new Blob([buffer], { type: "image/png" });
+    }
+
+    // beheader ICO/MP4 polyglot
+    else {
+      var view = new DataView(buffer);
+
+      // ICO header: 00 00 01 00
+      var isICO =
+        bytes[0] === 0x00 &&
+        bytes[1] === 0x00 &&
+        bytes[2] === 0x01 &&
+        bytes[3] === 0x00;
+
+      if (!isICO) {
+        throw new Error("Unsupported image/polyglot format");
+      }
+
+      // beheader stores PNG size and offset in the ICO directory entry
+      var pngSize   = view.getUint32(14, true);
+      var pngOffset = view.getUint32(18, true);
+
+      if (
+        pngOffset <= 0 ||
+        pngSize <= 0 ||
+        pngOffset + pngSize > buffer.byteLength
+      ) {
+        throw new Error("Invalid embedded PNG");
+      }
+
+      var pngData = buffer.slice(
+        pngOffset,
+        pngOffset + pngSize
+      );
+
+      imageBlob = new Blob([pngData], { type: "image/png" });
+    }
+
+    var url = URL.createObjectURL(imageBlob);
+    var image = new Image();
 
     image.onload = function() {
       $canvas.prop({
-        'width': image.width,
-        'height': image.height
+        width: image.width,
+        height: image.height
       });
 
       context.drawImage(image, 0, 0);
+      URL.revokeObjectURL(url);
 
       callback();
-    }
-  }
+    };
+
+    image.onerror = function() {
+      URL.revokeObjectURL(url);
+      console.error("Could not decode embedded image");
+    };
+
+    image.src = url;
+  });
 }
 
 function encodeMessage() {
