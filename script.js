@@ -194,7 +194,7 @@ function decodeMessage() {
   var $originalCanvas = $('.decode canvas');
   var originalContext = $originalCanvas[0].getContext("2d");
 
-  var original = originalContext.getImageData(0, 0, $originalCanvas.width(), $originalCanvas.height());
+  var original = originalContext.getImageData(0, 0, $originalCanvas[0].width, $originalCanvas[0].height);
   var binaryMessage = "";
   var pixel = original.data;
   for (var i = 0, n = pixel.length; i < n; i += 4) {
